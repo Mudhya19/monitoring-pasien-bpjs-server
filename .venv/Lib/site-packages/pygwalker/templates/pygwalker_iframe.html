@@ -1,0 +1,56 @@
+{% if component_url == "" %}
+<div id="ifr-pyg-{{ gid }}" style="height: auto">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    </head>
+    <iframe
+        width="{{ width }}"
+        height="{{ height }}"
+        id="gwalker-{{ gid }}"
+        srcdoc="{{ srcdoc }}"
+        frameborder="0"
+        allow="clipboard-read; clipboard-write"
+        allowfullscreen
+        {% if appearance == "dark" %}
+            style=" background: hsl(240 10% 3.9%); color: hsl(0 0% 98%);"
+        {% elif appearance == "light" %}
+            style=" background: hsl(0 0 100%); color: hsl(240 10% 3.9%);"
+        {% else %}
+            style=""
+        {% endif %}
+    >
+    </iframe>
+</div>
+{% endif %}
+
+{% if component_url != "" %}
+<div id="ifr-pyg-{{ gid }}" style="height: auto">
+    <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    </head>
+    <iframe
+        width="0"
+        height="0"
+        frameborder="0"
+        srcdoc="{{ srcdoc }}"
+    >
+    </iframe>
+    <iframe
+        width="{{ width }}"
+        height="{{ height }}"
+        id="gwalker-{{ gid }}"
+        src="{{ component_url }}"
+        frameborder="0"
+        allow="clipboard-read; clipboard-write"
+        allowfullscreen
+        {% if appearance == "dark" %}
+            style=" background: hsl(240 10% 3.9%); color: hsl(0 0% 98%);"
+        {% elif appearance == "light" %}
+            style=" background: hsl(0 0 100%); color: hsl(240 10% 3.9%);"
+        {% else %}
+            style=""
+        {% endif %}
+    >
+    </iframe>
+</div>
+{% endif %}

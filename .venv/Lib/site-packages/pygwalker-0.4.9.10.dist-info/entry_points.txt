@@ -1,0 +1,2 @@
+[console_scripts]
+pygwalker = bin.pygwalker_command:main

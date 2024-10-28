@@ -1,0 +1,664 @@
+unit untDetailTndknV1;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, FireDAC.Stan.Intf, FireDAC.Stan.Option,
+  FireDAC.Stan.Param, FireDAC.Stan.Error, FireDAC.DatS, FireDAC.Phys.Intf,
+  FireDAC.DApt.Intf, FireDAC.Stan.Async, FireDAC.DApt, FireDAC.UI.Intf,
+  FireDAC.Stan.Def, FireDAC.Stan.Pool, FireDAC.Phys, FireDAC.Phys.MySQL,
+  FireDAC.Phys.MySQLDef, FireDAC.VCLUI.Wait, Data.DB, Vcl.StdCtrls,
+  Vcl.ComCtrls, Vcl.Grids, Vcl.DBGrids, FireDAC.Comp.Client,
+  FireDAC.Comp.DataSet, Data.FMTBcd, Data.SqlExpr, Data.Win.ADODB, Excel2000, ComObj, System.Generics.Collections,
+  Vcl.ExtCtrls;
+
+
+type
+  TForm1 = class(TForm)
+    FDQuery1: TFDQuery;
+    FDConnection1: TFDConnection;
+    DataSource1: TDataSource;
+    DBGrid1: TDBGrid;
+    DateTimePicker1: TDateTimePicker;
+    DateTimePicker2: TDateTimePicker;
+    edtPencarian: TEdit;
+    btnTampil: TButton;
+    btnExcel: TButton;
+    ProgressBar1: TProgressBar;
+    ComboBox1: TComboBox;
+    ComboBox2: TComboBox;
+    TabControl1: TTabControl;
+    Memo1: TMemo;
+    lblTotal: TLabel;
+    GroupBox1: TGroupBox;
+    lblNama: TLabel;
+    GroupBox2: TGroupBox;
+    GroupBox3: TGroupBox;
+    Memo2: TMemo;
+    Memo3: TMemo;
+    Memo4: TMemo;
+    Memo5: TMemo;
+    Memo6: TMemo;
+    Memo7: TMemo;
+    procedure btnTampilClick(Sender: TObject);
+    procedure FormCreate(Sender: TObject);
+    procedure DBGrid1CellClick(Column: TColumn);
+    procedure btnExcelClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  Form1: TForm1;
+
+implementation
+
+{$R *.dfm}
+
+procedure TForm1.btnExcelClick(Sender: TObject);
+var
+  ExcelApp, ExcelWorkbook, ExcelWorksheet: OleVariant;
+  I, RowIndex, KamarIndex, DokterPerawatIndex, PerawatIndex, InapDrIndex, InapDrPrIndex, InapPrIndex, MaxRows, InitialRowIndex: Integer;
+  SelectedFields: array[0..18] of string;
+  FieldAliases: array[0..18] of string;
+  FieldValue, Category, ValueStr: string;
+  SplitData, SplitKamar, SplitDokter, SplitDokterPerawat, SplitPerawat, SplitInapDr, SplitInapDrPr, SplitInapPr: TArray<string>;
+  Value: Double;
+  const SeparatorRows = 3;  // Number of blank rows to add between records
+
+  function Max(A, B: Integer): Integer;
+  begin
+    if A > B then
+      Result := A
+    else
+      Result := B;
+  end;
+
+begin
+  // Daftar field yang akan diekspor dan urutannya
+  SelectedFields[0] := 'no_rawat';
+  SelectedFields[1] := 'tgl_masuk';
+  SelectedFields[2] := 'tgl_keluar';
+  SelectedFields[3] := 'nm_pasien';
+  SelectedFields[4] := 'no_rkm_medis';
+  SelectedFields[5] := 'no_sep';
+  SelectedFields[6] := 'no_peserta';
+  SelectedFields[7] := 'png_jawab';
+  SelectedFields[8] := 'nm_poli';
+  SelectedFields[9] := 'status_lanjut';
+  SelectedFields[10] := 'billing_nm_perawatan';
+  SelectedFields[12] := 'kd_kamar_nm_bangsal';
+  SelectedFields[13] := 'biaya_per_dokter_rj_igd';
+  SelectedFields[14] := 'biaya_per_dokter_rj_igd_drpr';
+  SelectedFields[15] := 'biaya_per_perawat_rj_igd_pr';
+  SelectedFields[16] := 'biaya_per_dokter_inap_dr';
+  SelectedFields[17] := 'biaya_per_dokter_inap_drpr';
+  SelectedFields[18] := 'biaya_per_pegawai_inap_pr';
+
+  // Nama alias untuk header
+  FieldAliases[0] := 'NO RAWAT';
+  FieldAliases[1] := 'MASUK';
+  FieldAliases[2] := 'PULANG';
+  FieldAliases[3] := 'NAMA';
+  FieldAliases[4] := 'NO RM';
+  FieldAliases[5] := 'SEP';
+  FieldAliases[6] := 'NO BPJS';
+  FieldAliases[7] := 'PEMBAYARAN';
+  FieldAliases[8] := 'ASAL RJ';
+  FieldAliases[9] := 'STATUS';
+  FieldAliases[10] := 'TOTAL';
+  FieldAliases[12] := 'KAMAR';
+  FieldAliases[13] := 'RJ/IGD Detail Tindakan Dokter';
+  FieldAliases[14] := 'RJ/IGD Tindakan Bersama Dokter/Perawat';
+  FieldAliases[15] := 'RJ/IGD Detail Tindakan Perawat';
+  FieldAliases[16] := 'RANAP Detail Tindakan Dokter';
+  FieldAliases[17] := 'RANAP Tindakan Bersama Dokter/Perawat';
+  FieldAliases[18] := 'RANAP Detail Tindakan Perawat';
+
+  // Buat instance Excel
+  ExcelApp := CreateOleObject('Excel.Application');
+  try
+    ExcelApp.Visible := True; // Tampilkan Excel
+
+    // Buat workbook baru
+    ExcelWorkbook := ExcelApp.Workbooks.Add;
+    ExcelWorksheet := ExcelWorkbook.Worksheets[1];
+
+    // Tambahkan header ke worksheet
+    for I := Low(SelectedFields) to High(SelectedFields) do
+    begin
+      ExcelWorksheet.Cells[1, I + 1].Value := FieldAliases[I];
+    end;
+
+    // Tambahkan header ke worksheet dan buat teksnya menjadi bold
+    for I := Low(SelectedFields) to High(SelectedFields) do
+    begin
+    ExcelWorksheet.Cells[1, I + 1].Value := FieldAliases[I];
+    ExcelWorksheet.Cells[1, I + 1].Font.Bold := True;  // Membuat teks header menjadi bold
+    ExcelWorksheet.Cells[1, I + 1].Interior.Color := $00FFFF;  // Warna kuning pada background
+    end;
+
+    FDQuery1.First;
+    RowIndex := 2;
+
+    while not FDQuery1.Eof do
+    begin
+      // Simpan nilai awal RowIndex
+      InitialRowIndex := RowIndex;
+
+      // Process the 'Kamar' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[12]).AsString;
+      SplitKamar := FieldValue.Split([',']);
+      MaxRows := Length(SplitKamar);
+
+      // Process the 'biaya_per_dokter_rj_igd' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[13]).AsString;
+      SplitDokter := FieldValue.Split([' - ']);
+
+      // Process the 'biaya_per_dokter_rj_igd_drpr' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[14]).AsString;
+      SplitDokterPerawat := FieldValue.Split([' - ']);
+
+      // Process the 'biaya_per_perawat_rj_igd_pr' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[15]).AsString;
+      SplitPerawat := FieldValue.Split([' - ']);
+
+      // Process the 'biaya_per_dokter_inap_dr' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[16]).AsString;
+      SplitInapDr := FieldValue.Split([' - ']);
+
+      // Process the 'biaya_per_dokter_inap_drpr' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[17]).AsString;
+      SplitInapDrPr := FieldValue.Split([' - ']);
+
+      // Process the 'biaya_per_pegawai_inap_pr' field and split it
+      FieldValue := FDQuery1.FieldByName(SelectedFields[18]).AsString;
+      SplitInapPr := FieldValue.Split([' - ']);
+
+      // Determine the maximum number of rows needed
+      MaxRows := Max(MaxRows, Length(SplitDokter));
+      MaxRows := Max(MaxRows, Length(SplitDokterPerawat));
+      MaxRows := Max(MaxRows, Length(SplitPerawat));
+      MaxRows := Max(MaxRows, Length(SplitInapDr));
+      MaxRows := Max(MaxRows, Length(SplitInapDrPr));
+      MaxRows := Max(MaxRows, Length(SplitInapPr));
+
+      // Loop through each part of the 'Kamar', 'biaya_per_dokter_rj_igd', 'biaya_per_dokter_rj_igd_drpr', 'biaya_per_perawat_rj_igd_pr', 'biaya_per_dokter_inap_dr', 'biaya_per_dokter_inap_drpr', and 'biaya_per_pegawai_inap_pr' data and write it
+      for KamarIndex := 0 to MaxRows - 1 do
+      begin
+        // Write 'Kamar' field data
+        if KamarIndex < Length(SplitKamar) then
+          ExcelWorksheet.Cells[RowIndex + KamarIndex, 13].Value := Trim(SplitKamar[KamarIndex]);
+
+        // Write 'biaya_per_dokter_rj_igd' field data
+        if KamarIndex < Length(SplitDokter) then
+        begin
+          SplitData := SplitDokter[KamarIndex].Split([' : ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 14].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+
+        // Write 'biaya_per_dokter_rj_igd_drpr' field data
+        if KamarIndex < Length(SplitDokterPerawat) then
+        begin
+          SplitData := SplitDokterPerawat[KamarIndex].Split([' : ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 15].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+
+        // Write 'biaya_per_perawat_rj_igd_pr' field data
+        if KamarIndex < Length(SplitPerawat) then
+        begin
+          SplitData := SplitPerawat[KamarIndex].Split([': ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 16].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+
+        // Write 'biaya_per_dokter_inap_dr' field data
+        if KamarIndex < Length(SplitInapDr) then
+        begin
+          SplitData := SplitInapDr[KamarIndex].Split([': ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 17].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+
+        // Write 'biaya_per_dokter_inap_drpr' field data
+        if KamarIndex < Length(SplitInapDrPr) then
+        begin
+          SplitData := SplitInapDrPr[KamarIndex].Split([': ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 18].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+
+        // Write 'biaya_per_pegawai_inap_pr' field data
+        if KamarIndex < Length(SplitInapPr) then
+        begin
+          SplitData := SplitInapPr[KamarIndex].Split([': ']);
+          if Length(SplitData) = 2 then
+          begin
+            Category := Trim(SplitData[0]);
+            if TryStrToFloat(Trim(SplitData[1]), Value) then
+              ExcelWorksheet.Cells[RowIndex + KamarIndex, 19].Value := Category + ' : ' + FloatToStr(Value);
+          end;
+        end;
+      end;
+
+      // Process other fields
+      for I := 0 to High(SelectedFields) do
+      begin
+        if I = 11 then Continue;  // Skip the empty row
+        if I = 12 then Continue;  // Skip 'Kamar' since it is already written
+        if I = 13 then Continue;  // Skip 'biaya_per_dokter_rj_igd' since it is already written
+        if I = 14 then Continue;  // Skip 'biaya_per_dokter_rj_igd_drpr' since it is already written
+        if I = 15 then Continue;  // Skip 'biaya_per_perawat_rj_igd_pr' since it is already written
+        if I = 16 then Continue;  // Skip 'biaya_per_dokter_inap_dr' since it is already written
+        if I = 17 then Continue;  // Skip 'biaya_per_dokter_inap_drpr' since it is already written
+        if I = 18 then Continue;  // Skip 'biaya_per_pegawai_inap_pr' since it is already written
+
+        FieldValue := FDQuery1.FieldByName(SelectedFields[I]).AsString;
+
+        if SelectedFields[I] = 'tgl_masuk' then
+        begin
+          ExcelWorksheet.Cells[InitialRowIndex, I + 1].NumberFormat := 'dd/mm/yyyy';
+          ExcelWorksheet.Cells[InitialRowIndex, I + 1].Value := FDQuery1.FieldByName(SelectedFields[I]).AsDateTime;
+        end
+        else if SelectedFields[I] = 'tgl_keluar' then
+        begin
+          ExcelWorksheet.Cells[InitialRowIndex, I + 1].NumberFormat := 'dd/mm/yyyy';
+          ExcelWorksheet.Cells[InitialRowIndex, I + 1].Value := FDQuery1.FieldByName(SelectedFields[I]).AsDateTime;
+        end
+        else if SelectedFields[I] = 'billing_nm_perawatan' then
+        begin
+          SplitData := FieldValue.Split([' - ']);
+
+          for FieldValue in SplitData do
+          begin
+            SplitData := FieldValue.Split([': ']);
+
+            if Length(SplitData) = 2 then
+            begin
+              Category := Trim(SplitData[0]);
+              ValueStr := Trim(SplitData[1]);
+
+              if TryStrToFloat(ValueStr, Value) then
+          begin
+          // Check if the category is "Total Potongan" to make the value negative
+         if Category = 'Total Potongan' then
+         Value := -Value;
+         ExcelWorksheet.Cells[RowIndex, I + 1].Value := Category;
+         ExcelWorksheet.Cells[RowIndex, I + 2].Value := Value; // Menyimpan nilai sebagai tipe data Double atau Currency
+
+         // Set the number format for the value
+         ExcelWorksheet.Cells[RowIndex, I + 2].NumberFormat := '#.##0';
+         Inc(RowIndex);  // Move to the next row for the next item
+              end;
+            end;
+          end;
+        end
+        else
+        begin
+          if FDQuery1.FieldByName(SelectedFields[I]).DataType in [ftFloat, ftCurrency, ftBCD] then
+            ExcelWorksheet.Cells[InitialRowIndex, I + 1].Value := FDQuery1.FieldByName(SelectedFields[I]).AsFloat
+          else
+          begin
+            if (SelectedFields[I] = 'no_rkm_medis') or (SelectedFields[I] = 'no_peserta') then
+              ExcelWorksheet.Cells[InitialRowIndex, I + 1].NumberFormat := '@';
+            ExcelWorksheet.Cells[InitialRowIndex, I + 1].Value := FieldValue;
+          end;
+        end;
+      end;
+
+      // Tentukan baris berikutnya yang tersedia dengan membandingkan RowIndex dan InitialRowIndex + MaxRows
+      RowIndex := Max(RowIndex, InitialRowIndex + MaxRows) + SeparatorRows; // Add separator rows
+
+      FDQuery1.Next;
+    end;
+
+    ExcelWorksheet.Columns.AutoFit;
+
+    ShowMessage('Data berhasil diekspor ke Excel!');
+  except
+    on E: Exception do
+      ShowMessage('Terjadi kesalahan saat mengekspor data: ' + E.Message);
+  end;
+end;
+
+
+
+
+procedure TForm1.btnTampilClick(Sender: TObject);
+var
+  SQLQuery: string;
+  i,  TotalCount : Integer;
+  FilterText, SelectedKamar, SelectedPembayaran : string;
+
+begin
+
+  // Tampilkan progress bar dan set posisi ke 0
+  ProgressBar1.Visible := True;
+  ProgressBar1.Position := 0;
+  try
+      FilterText := Trim(edtPencarian.Text);
+      SelectedKamar := ComboBox1.Text;
+      SelectedPembayaran := ComboBox2.Text;
+
+  SQLQuery := 'SELECT ' +
+              'reg_periksa.no_rawat, reg_periksa.no_rkm_medis, reg_periksa.status_lanjut, pasien.nm_pasien, ' +
+              'pasien.no_peserta, penjab.png_jawab, poliklinik.nm_poli, bridging_sep.no_sep, kamar_inap.tgl_masuk, ' +
+
+              '(SELECT MAX(kamar_inap.tgl_keluar) FROM kamar_inap WHERE kamar_inap.no_rawat = reg_periksa.no_rawat) AS tgl_keluar, '+
+              'GROUP_CONCAT(DISTINCT CONCAT(kamar.kd_kamar, '' / '', bangsal.nm_bangsal, '' ('', kamar_inap.lama, '') '', kamar_inap.ttl_biaya, ''_'', kamar_inap.stts_pulang) ' +
+
+              'ORDER BY kamar.kd_kamar SEPARATOR '', '') AS kd_kamar_nm_bangsal, ' +
+           // 'COALESCE((SELECT SUM(kamar_inap.ttl_biaya) FROM kamar_inap WHERE kamar_inap.no_rawat = reg_periksa.no_rawat), 0) AS ttl_biaya, ' +
+
+
+              'GROUP_CONCAT(DISTINCT CONCAT(dr_rj.nm_dokter, '' : '', total_biaya_dokter) ORDER BY dr_rj.nm_dokter SEPARATOR '' - '') AS biaya_per_dokter_rj_igd, ' +
+              'GROUP_CONCAT(DISTINCT CONCAT(drpr_rj.nm_dokter,'' / '',pg_drpr.nama, '' : '',biaya_dokter_drpr.total_biaya_dokter_drpr) ORDER BY drpr_rj.nm_dokter SEPARATOR '' - '') AS biaya_per_dokter_rj_igd_drpr, ' +
+              'GROUP_CONCAT(DISTINCT CONCAT(pg_pr.nama, '' : '', biaya_perawat.total_biaya_perawat) ORDER BY rawat_jl_pr.nip  SEPARATOR '' - '') AS biaya_per_perawat_rj_igd_pr, ' +
+
+              'GROUP_CONCAT(DISTINCT CONCAT(dr_ri.nm_dokter, '' : '', biaya_dokter_inap_dr.total_biaya_dokter_inap) ORDER BY dr_ri.nm_dokter SEPARATOR '' - '') AS biaya_per_dokter_inap_dr, ' +
+
+              'GROUP_CONCAT(DISTINCT CONCAT(drpr_ri.nm_dokter, '' / '', peg_inap_prdr.nama, '' : '', COALESCE(biaya_dokter_inap_drpr.total_biaya_dokter_inap_drpr, 0)) ' +
+              'ORDER BY drpr_ri.nm_dokter SEPARATOR '' - '') AS biaya_per_dokter_inap_drpr, '+
+
+              'GROUP_CONCAT(DISTINCT CONCAT(peg_inap_pr.nama, '' : '', biaya_perawat_inap.total_biaya_perawat_inap) ORDER BY peg_inap_pr.nama SEPARATOR '' - '') AS biaya_per_pegawai_inap_pr, ' +
+
+         //     'GROUP_CONCAT(DISTINCT billing.nm_perawatan SEPARATOR '' - '') AS billing_nm_perawatan ' +
+              'GROUP_CONCAT(DISTINCT CONCAT(REPLACE(billing.nm_perawatan, '','' , ''''), '' - '') SEPARATOR '''') AS billing_nm_perawatan  ' +
+
+
+              'FROM reg_periksa ' +
+              'LEFT JOIN pasien ON reg_periksa.no_rkm_medis = pasien.no_rkm_medis ' +
+              'LEFT JOIN penjab ON reg_periksa.kd_pj = penjab.kd_pj ' +
+              'LEFT JOIN poliklinik ON reg_periksa.kd_poli = poliklinik.kd_poli ' +
+              'LEFT JOIN bridging_sep ON reg_periksa.no_rawat = bridging_sep.no_rawat ' +
+              'LEFT JOIN kamar_inap ON reg_periksa.no_rawat = kamar_inap.no_rawat ' +
+              'LEFT JOIN kamar ON kamar_inap.kd_kamar = kamar.kd_kamar ' +
+              'LEFT JOIN bangsal ON kamar.kd_bangsal = bangsal.kd_bangsal ' +
+              'LEFT JOIN billing ON reg_periksa.no_rawat = billing.no_rawat ' +
+
+         // batasr_jalan
+              'LEFT JOIN rawat_jl_dr ON reg_periksa.no_rawat = rawat_jl_dr.no_rawat ' +
+              'LEFT JOIN rawat_jl_drpr ON reg_periksa.no_rawat = rawat_jl_drpr.no_rawat ' +
+              'LEFT JOIN rawat_jl_pr ON reg_periksa.no_rawat = rawat_jl_pr.no_rawat ' +
+
+              'LEFT JOIN dokter dr_rj ON rawat_jl_dr.kd_dokter = dr_rj.kd_dokter ' +
+              'LEFT JOIN dokter drpr_rj ON rawat_jl_drpr.kd_dokter = drpr_rj.kd_dokter ' +
+
+              'LEFT JOIN pegawai pg_drpr ON rawat_jl_drpr.nip = pg_drpr.nik ' +
+              'LEFT JOIN pegawai pg_pr ON rawat_jl_pr.nip = pg_pr.nik ' +
+
+         // batas r_inap
+              'LEFT JOIN rawat_inap_dr rid ON reg_periksa.no_rawat = rid.no_rawat ' +
+              'LEFT JOIN rawat_inap_drpr ridpr ON reg_periksa.no_rawat = ridpr.no_rawat ' +
+              'LEFT JOIN rawat_inap_pr ripr ON reg_periksa.no_rawat = ripr.no_rawat ' +
+
+              'LEFT JOIN dokter dr_ri ON rid.kd_dokter = dr_ri.kd_dokter ' +
+              'LEFT JOIN dokter drpr_ri ON ridpr.kd_dokter = drpr_ri.kd_dokter ' +
+
+              'LEFT JOIN pegawai peg_inap_prdr ON ridpr.nip = peg_inap_prdr.nik ' +
+              'LEFT JOIN pegawai peg_inap_pr ON ripr.nip = peg_inap_pr.nik ' +
+
+
+               //-- rjdr/igd
+                'LEFT JOIN (SELECT no_rawat, kd_dokter, SUM(biaya_rawat) AS total_biaya_dokter ' +
+                'FROM rawat_jl_dr GROUP BY no_rawat, kd_dokter) AS biaya_dokter ON rawat_jl_dr.no_rawat = biaya_dokter.no_rawat AND rawat_jl_dr.kd_dokter = biaya_dokter.kd_dokter ' +
+
+               //-- rjdrpr/igd
+                'LEFT JOIN (SELECT no_rawat, kd_dokter, nip, SUM(biaya_rawat) AS total_biaya_dokter_drpr ' +
+                'FROM rawat_jl_drpr GROUP BY no_rawat, kd_dokter, nip) AS biaya_dokter_drpr ON rawat_jl_drpr.no_rawat = biaya_dokter_drpr.no_rawat AND rawat_jl_drpr.kd_dokter = biaya_dokter_drpr.kd_dokter AND rawat_jl_drpr.nip = biaya_dokter_drpr.nip ' +
+
+              //-- rjpr/igd
+                'LEFT JOIN (SELECT no_rawat, nip, SUM(biaya_rawat) AS total_biaya_perawat ' +
+                'FROM rawat_jl_pr GROUP BY no_rawat, nip) AS biaya_perawat ON rawat_jl_pr.no_rawat = biaya_perawat.no_rawat AND rawat_jl_pr.nip = biaya_perawat.nip ' +
+
+              //-- JOIN untuk biaya total rawat_inap_dr berdasarkan dokter
+                'LEFT JOIN (SELECT no_rawat, kd_dokter, SUM(biaya_rawat) AS total_biaya_dokter_inap '+
+                'FROM rawat_inap_dr GROUP BY no_rawat, kd_dokter) AS biaya_dokter_inap_dr ON rid.no_rawat = biaya_dokter_inap_dr.no_rawat AND rid.kd_dokter = biaya_dokter_inap_dr.kd_dokter ' +
+
+              //-- JOIN untuk biaya total rawat_inap_drpr berdasarkan dokter dan nip
+                'LEFT JOIN (SELECT no_rawat, kd_dokter, nip, SUM(biaya_rawat) AS total_biaya_dokter_inap_drpr FROM rawat_inap_drpr GROUP BY no_rawat, kd_dokter, nip) AS biaya_dokter_inap_drpr ' +
+                'ON ridpr.no_rawat = biaya_dokter_inap_drpr.no_rawat AND ridpr.kd_dokter = biaya_dokter_inap_drpr.kd_dokter AND ridpr.nip = biaya_dokter_inap_drpr.nip ' +
+
+              //-- JOIN untuk biaya total rawat_inap_pr berdasarkan pegawai (nip)
+                'LEFT JOIN (SELECT no_rawat, nip, SUM(biaya_rawat) AS total_biaya_perawat_inap '+
+                'FROM rawat_inap_pr GROUP BY no_rawat, nip) AS biaya_perawat_inap ON ripr.no_rawat = biaya_perawat_inap.no_rawat AND ripr.nip = biaya_perawat_inap.nip ' +
+
+           //   'WHERE (SELECT MAX(kamar_inap.tgl_keluar) FROM kamar_inap ' +
+            //  'WHERE kamar_inap.no_rawat = reg_periksa.no_rawat) BETWEEN :StartDate AND :EndDate ' +
+              'WHERE billing.nm_perawatan LIKE ''%total%'' AND billing.nm_perawatan NOT LIKE ''%Total Obat & BHP%'' AND billing.nm_perawatan NOT LIKE ''%Total Retur Obat%'' AND kamar_inap.tgl_keluar BETWEEN :StartDate AND :EndDate ';
+
+
+   if FilterText <> '' then
+    begin
+      SQLQuery := SQLQuery + ' AND (reg_periksa.no_rawat LIKE :FilterText ' +
+                             'OR pasien.nm_pasien LIKE :FilterText ' +
+                             'OR pasien.no_rkm_medis LIKE :FilterText ' +
+                             'OR bridging_sep.no_sep LIKE :FilterText ' +
+                             'OR penjab.png_jawab LIKE :FilterText ' +
+                             'OR bangsal.nm_bangsal LIKE :FilterText)';
+    end;
+
+
+     if SelectedKamar <> '' then
+    begin
+      SQLQuery := SQLQuery + ' AND bangsal.nm_bangsal LIKE :SelectedKamar ';
+    end;
+    if SelectedPembayaran <> '' then
+    begin
+      SQLQuery := SQLQuery + ' AND penjab.png_jawab LIKE :SelectedPembayaran ';
+    end;
+    SQLQuery := SQLQuery + ' GROUP BY reg_periksa.no_rawat';
+    // Set SQL ke komponen query
+    FDQuery1.SQL.Text := SQLQuery;
+    // Set parameter untuk tanggal
+    FDQuery1.ParamByName('StartDate').AsDate := DateTimePicker1.Date;
+    FDQuery1.ParamByName('EndDate').AsDate := DateTimePicker2.Date;
+    // Set parameter jika ada filter text
+    if FilterText <> '' then
+      FDQuery1.ParamByName('FilterText').AsString := '%' + FilterText + '%';
+    // Set parameter untuk kamar jika ada
+    if SelectedKamar <> '' then
+      FDQuery1.ParamByName('SelectedKamar').AsString := '%' + SelectedKamar + '%';
+    // Set parameter untuk pembayaran jika ada
+    if SelectedPembayaran <> '' then
+      FDQuery1.ParamByName('SelectedPembayaran').AsString := '%' + SelectedPembayaran + '%';
+    // Eksekusi query
+    FDQuery1.FetchOptions.Mode := fmAll;
+    FDQuery1.Open;
+
+     // Hitung jumlah total data
+    TotalCount := FDQuery1.RecordCount;
+
+    //Tampilkan total data pada lblTotal
+    lblTotal.Caption := IntToStr(TotalCount);
+
+    // Simulasi progres
+    for i := 1 to 100 do
+    begin
+      ProgressBar1.Position := i;
+      Application.ProcessMessages;
+      Sleep(10);
+    end;
+  finally
+    ProgressBar1.Visible := False;
+  end;
+end;
+
+
+procedure TForm1.DBGrid1CellClick(Column: TColumn);
+var
+  SelectedBillingPerawatan, SelectedNamaPasien: string;
+  Selecteddrrjigd, SelectedInapDR: string;
+  SelecteddrrjigdDRPR, SelectedInapDRPR: string;
+  SelectedPerawatRJIGDPR, SelectedPegawaiInapPR: string;
+  BillingList, drrjigdList, InapDRList: TStringList;
+  drrjigdDRPRList, InapDRPRList: TStringList;
+  PerawatRJIGDPRList, PegawaiInapPRList: TStringList;
+begin
+  // Ambil data dari berbagai field di FDQuery1
+  SelectedBillingPerawatan := FDQuery1.FieldByName('billing_nm_perawatan').AsString;
+  Selecteddrrjigd := FDQuery1.FieldByName('biaya_per_dokter_rj_igd').AsString;
+  SelectedInapDR := FDQuery1.FieldByName('biaya_per_dokter_inap_dr').AsString;
+  SelecteddrrjigdDRPR := FDQuery1.FieldByName('biaya_per_dokter_rj_igd_drpr').AsString;
+  SelectedInapDRPR := FDQuery1.FieldByName('biaya_per_dokter_inap_drpr').AsString;
+  SelectedPerawatRJIGDPR := FDQuery1.FieldByName('biaya_per_perawat_rj_igd_pr').AsString;
+  SelectedPegawaiInapPR := FDQuery1.FieldByName('biaya_per_pegawai_inap_pr').AsString;
+  SelectedNamaPasien := FDQuery1.FieldByName('nm_pasien').AsString;
+
+  // Inisialisasi TStringList untuk setiap field
+  BillingList := TStringList.Create;
+  drrjigdList := TStringList.Create;
+  InapDRList := TStringList.Create;
+  drrjigdDRPRList := TStringList.Create;
+  InapDRPRList := TStringList.Create;
+  PerawatRJIGDPRList := TStringList.Create;
+  PegawaiInapPRList := TStringList.Create;
+
+  try
+    // Memecah string berdasarkan tanda '-'
+    BillingList.Delimiter := '-';
+    BillingList.StrictDelimiter := True;
+    BillingList.DelimitedText := SelectedBillingPerawatan;
+
+    drrjigdList.Delimiter := '-';
+    drrjigdList.StrictDelimiter := True;
+    drrjigdList.DelimitedText := Selecteddrrjigd;
+
+    InapDRList.Delimiter := '-';
+    InapDRList.StrictDelimiter := True;
+    InapDRList.DelimitedText := SelectedInapDR;
+
+    drrjigdDRPRList.Delimiter := '-';
+    drrjigdDRPRList.StrictDelimiter := True;
+    drrjigdDRPRList.DelimitedText := SelecteddrrjigdDRPR;
+
+    InapDRPRList.Delimiter := '-';
+    InapDRPRList.StrictDelimiter := True;
+    InapDRPRList.DelimitedText := SelectedInapDRPR;
+
+    PerawatRJIGDPRList.Delimiter := '-';
+    PerawatRJIGDPRList.StrictDelimiter := True;
+    PerawatRJIGDPRList.DelimitedText := SelectedPerawatRJIGDPR;
+
+    PegawaiInapPRList.Delimiter := '-';
+    PegawaiInapPRList.StrictDelimiter := True;
+    PegawaiInapPRList.DelimitedText := SelectedPegawaiInapPR;
+
+    // Tampilkan data ke Memo1 hingga Memo9
+    Memo1.Lines.Clear;
+    Memo1.Lines.Add('Data Billing Perawatan');
+    Memo1.Lines.AddStrings(BillingList);
+
+    Memo2.Lines.Clear;
+    Memo2.Lines.Add('Dokter RJ / IGD');
+    Memo2.Lines.AddStrings(drrjigdList);
+
+    Memo3.Lines.Clear;
+    Memo3.Lines.Add('Dokter Ranap');
+    Memo3.Lines.AddStrings(InapDRList);
+
+    Memo4.Lines.Clear;
+    Memo4.Lines.Add('RJ / IGD Dokter Bersama Perawat');
+    Memo4.Lines.AddStrings(drrjigdDRPRList);
+
+    Memo5.Lines.Clear;
+    Memo5.Lines.Add('Ranap Dokter Bersama Perawat');
+    Memo5.Lines.AddStrings(InapDRPRList);
+
+    Memo6.Lines.Clear;
+    Memo6.Lines.Add('RJ / IGD Perawat');
+    Memo6.Lines.AddStrings(PerawatRJIGDPRList);
+
+    Memo7.Lines.Clear;
+    Memo7.Lines.Add('Ranap Perawat');
+    Memo7.Lines.AddStrings(PegawaiInapPRList);
+  finally
+    // Membebaskan memori yang digunakan oleh TStringList
+    BillingList.Free;
+    drrjigdList.Free;
+    InapDRList.Free;
+    drrjigdDRPRList.Free;
+    InapDRPRList.Free;
+    PerawatRJIGDPRList.Free;
+    PegawaiInapPRList.Free;
+  end;
+
+  // Tampilkan nama pasien ke lblNama
+  lblNama.Caption := SelectedNamaPasien;
+end;
+
+
+
+
+
+procedure TForm1.FormCreate(Sender: TObject);
+var
+  FDQuery: TFDQuery;
+begin
+  DateTimePicker1.Date := now;
+  DateTimePicker2.Date := now;
+
+  // Create and configure the query
+  FDQuery := TFDQuery.Create(nil);
+  try
+    FDQuery.Connection := FDConnection1;  // Set your FDConnection component here
+
+    // Execute the first query for nm_bangsal
+    FDQuery.SQL.Text := 'SELECT nm_bangsal FROM bangsal ORDER BY nm_bangsal';
+    FDQuery.Open;
+    // Clear existing items in ComboBox1
+    ComboBox1.Items.Clear;
+    // Populate ComboBox1 with the query results
+    while not FDQuery.Eof do
+    begin
+      ComboBox1.Items.Add(FDQuery.FieldByName('nm_bangsal').AsString);
+      FDQuery.Next;
+    end;
+
+    // Close the query before running the next one
+    FDQuery.Close;
+
+    // Execute the second query for png_jawab
+    FDQuery.SQL.Text := 'SELECT png_jawab FROM penjab ORDER BY png_jawab';
+    FDQuery.Open;
+    // Clear existing items in ComboBox2
+    ComboBox2.Items.Clear;
+    // Populate ComboBox2 with the query results
+    while not FDQuery.Eof do
+    begin
+      ComboBox2.Items.Add(FDQuery.FieldByName('png_jawab').AsString);
+      FDQuery.Next;
+    end;
+
+  finally
+    FDQuery.Free;
+  end;
+end;
+
+
+end.
